@@ -83,6 +83,7 @@ func _ready() -> void:
 	%ButtonTheme.pressed.connect(_on_theme_button_pressed)
 	%ThemeSelect.item_selected.connect(_on_theme_selected)
 	%ButtonConnectedControllers.pressed.connect(_on_connected_controllers_pressed)
+	%ButtonKeyboardMapping.pressed.connect(_on_keyboard_mapping_pressed)
 	%ButtonBgColor.pressed.connect(func(): %ColorPickerBG.get_popup().popup_centered())
 	%ColorPickerBG.get_popup().about_to_popup.connect(close_menu)
 	
@@ -410,6 +411,7 @@ func _update_layout():
 
 	# 5a. Connected Controllers Row
 	%ButtonConnectedControllers.add_theme_font_size_override("font_size", dynamic_font_size)
+	%ButtonKeyboardMapping.add_theme_font_size_override("font_size", dynamic_font_size)
 
 	# 6. Background Color Row
 	_style_option_row(%ButtonBgColor, %ColorPickerBG, $SlidePanel/ScrollContainer/VBoxContainer/SectionDisplay/ContainerDisplay/ContentDisplay/BgColorRow/WrapperBgColor, dynamic_font_size, scale_factor)
@@ -1288,6 +1290,10 @@ func _on_connected_controllers_pressed():
 		
 	# Center it
 	dialog.position = (viewport_size - dialog.size * scale_factor) / 2.0
+
+func _on_keyboard_mapping_pressed():
+	PhysKb.open_editor()
+	close_menu()
 
 func _on_bg_color_picked(color: Color):
 	RenderingServer.set_default_clear_color(color)
