@@ -32,6 +32,12 @@ Settings are stored in the `[physkb]` section of `user://settings.cfg`.
     what character the key would type.
 *   A PICO-8 shortcut left on its own combination is not touched at all. Once it
     is moved or cleared, its original combination is swallowed.
+*   A combination shared by several actions is allowed: the editor marks it
+    and pressing it fires all of them.
+*   Esc and the PICO-8 shortcuts fire once per press (no auto-repeat).
+*   Modifier state is read from each key event. Ctrl/Shift lifted for a
+    translated key are only pressed again when a later key event shows them
+    still held.
 *   Shift may be added to a key binding and is passed on (Shift + an arrow
     binding selects text).
 *   The current screen (Splore / game / editor) comes from the shim's NavState,

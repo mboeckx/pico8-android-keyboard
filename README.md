@@ -61,7 +61,7 @@ Open **Options > Controls > Keyboard Mapping**.
 *   **Game keys** – in Splore and while a cart runs, `W` `A` `S` `D` act as the d-pad, `O` / `P` as the 🅾️ / ❎ buttons and `Q` as Esc. *Auto* needs PICO-8 0.2.7 to know which screen is showing; otherwise pick *Always*, or flip them with **Game keys on/off** (`Ctrl+Shift+G`), e.g. to type in the Splore search.
 *   **Missing keys / Characters** – give keys your keyboard lacks (Esc, arrows, Tab, `[` `]` `{` `}` …) a key combination. `Ctrl+Q` sends Esc by default.
 *   **PICO-8 shortcuts** – move PICO-8's fixed shortcuts (screenshot `F6`, cart label `F7`, …) to combinations you can reach, or clear one to disable it. A cleared or moved shortcut no longer reacts to its original combination.
-*   Tap a key box and press the combination to bind it, **✖** clears it, **↺** restores the default. A combination used by more than one action turns orange and lists the other actions.
+*   Tap a key box and press the combination to bind it, **✖** clears it, **↺** restores the default. A combination used by more than one action turns orange and lists the other actions. It still works: pressing it triggers all of them.
 *   **📱** puts any action on screen as a button. Move and resize the buttons with **Options > Display > Customize Layout**, like the built-in controls.
 *   **Code editor helpers** (each can be switched off): touch and hold a PICO-8 keyword for a short description, name suggestions while typing (tap one or press `Ctrl+Space`), and a usage hint for the function being typed.
 

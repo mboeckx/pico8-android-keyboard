@@ -20,6 +20,7 @@ const TEX_KEY = preload("res://assets/key.png")
 const TEX_KEY_PRESSED = preload("res://assets/key_pressed.png")
 
 const SECTION := "physkb"
+const ONCE_GUARD_MS := 300 # one-shot actions fire at most once per this interval
 const VKEY_SCALE := 1.5 # on-screen keys start a bit larger than keyboard keys
 const VKEY_ROW_UNITS := 80.0 # default row width before wrapping
 
@@ -59,7 +60,9 @@ var _blocked: Dictionary = {} # native combos of shortcuts that were moved/clear
 var _users: Dictionary = {} # combo -> [action ids]
 var _active: Dictionary = {} # token -> state of an output being held
 var _swallowed: Dictionary = {} # physical keys whose release must be eaten
-var _phys_mods: int = 0
+var _lifted: int = 0 # modifiers the user holds that we released in PICO-8
+var _forced: int = 0 # modifiers we pressed in PICO-8 that the user does not hold
+var _last_fired: Dictionary = {} # action id -> msec, for one-shot actions
 var _game_override = null
 var _last_screen: int = -1
 var _streamer: Node = null
@@ -170,12 +173,15 @@ func _rebuild() -> void:
 		if not _users.has(c):
 			_users[c] = []
 		_users[c].append(a.id)
-		# A shortcut still on PICO-8's own combination needs no translation.
-		if a.has("native") and c == int(a.native):
-			continue
 		var table := _game_lookup if a.group == A.G_GAME else _main_lookup
 		if not table.has(c):
-			table[c] = a
+			table[c] = []
+		table[c].append(a)
+	# A shortcut alone on PICO-8's own combination needs no translation at all.
+	for c in _main_lookup.keys():
+		var list: Array = _main_lookup[c]
+		if list.size() == 1 and list[0].has("native") and c == int(list[0].native):
+			_main_lookup.erase(c)
 	for a in actions:
 		if a.has("native") and get_binding(a.id) != int(a.native):
 			_blocked[int(a.native)] = true
@@ -207,10 +213,6 @@ func _virtual_mods() -> int:
 		if "Alt" in _streamer.held_keys: m |= A.M_ALT
 	return m
 
-## Modifiers PICO-8 currently believes are down (physical + on-screen).
-func _held_mods() -> int:
-	return _phys_mods | _virtual_mods()
-
 func screen() -> int:
 	return _streamer.current_navstate & NAV_SCREEN_MASK if is_instance_valid(_streamer) else 0
 
@@ -240,54 +242,70 @@ func handle_key(ev: InputEventKey) -> bool:
 	var key := event_key(ev)
 	if key == KEY_NONE:
 		return false
+	# Modifier state always comes from the event itself, never from memory, so
+	# a missed key-up can not leave a modifier "stuck".
+	var held := event_mods(ev)
 	if is_modifier_key(key):
-		var bit := 0
-		match key:
-			KEY_SHIFT: bit = A.M_SHIFT
-			KEY_CTRL: bit = A.M_CTRL
-		if ev.pressed: _phys_mods |= bit
-		else: _phys_mods &= ~bit
+		if key == KEY_CTRL: _lifted &= ~A.M_CTRL
+		if key == KEY_SHIFT: _lifted &= ~A.M_SHIFT
 		return false
 
 	if not ev.pressed:
 		if _active.has(key):
-			_release(key)
+			_release(key, held)
 			return true
 		if _swallowed.erase(key):
 			return true
 		return false
 
-	if _active.has(key):
-		_repeat(key)
-		return true
-	if _swallowed.has(key):
-		return true
+	if _active.has(key) or _swallowed.has(key):
+		if ev.echo:
+			_repeat(key)
+			return true
+		# A new press without having seen the release: drop the stale state.
+		_release(key, held)
+		_swallowed.erase(key)
 
 	if enabled:
-		var combo := A.combo(event_mods(ev), key)
+		var combo := A.combo(held, key)
 		var extra := 0
-		var act = _resolve(combo)
-		if act == null and (combo >> 24) & A.M_SHIFT:
+		var acts: Array = _resolve(combo)
+		if acts.is_empty() and (held & A.M_SHIFT):
 			# Let Shift ride along (e.g. Shift + an arrow binding selects text).
-			act = _resolve(combo & ~(A.M_SHIFT << 24))
-			if act != null and act.kind != "key":
-				act = null
+			acts = _resolve(combo & ~(A.M_SHIFT << 24)).filter(func(a): return a.kind == "key")
 			extra = A.M_SHIFT
-		if act != null:
-			_press(key, act, extra)
+		if not acts.is_empty():
+			_press(key, acts, extra, held)
 			return true
 		if _blocked.has(combo):
 			_swallowed[key] = true
 			return true
 
+	_sync_mods(held)
 	if assist:
 		assist.note_event(ev)
 	return false
 
-func _resolve(combo: int):
+## All actions bound to `combo` (a shared combination fires every one of them).
+func _resolve(combo: int) -> Array:
 	if game_keys_active() and _game_lookup.has(combo):
 		return _game_lookup[combo]
-	return _main_lookup.get(combo)
+	return _main_lookup.get(combo, [])
+
+## Before a key goes to PICO-8 untranslated: make PICO-8's idea of Ctrl/Shift
+## match what the user is really holding, undoing anything we changed.
+func _sync_mods(held: int) -> void:
+	var s := _streamer
+	if not is_instance_valid(s):
+		return
+	for pair in [[A.M_CTRL, SC_LCTRL], [A.M_SHIFT, SC_LSHIFT]]:
+		var bit: int = pair[0]
+		if (_lifted & bit) and (held & bit):
+			s.send_key(pair[1], true, false, _sdl_mods(held)) # still held: put it back
+		elif (_forced & bit) and not (held & bit):
+			s.send_key(pair[1], false, false, _sdl_mods(held)) # ours and stale: let go
+	_lifted = 0
+	_forced = 0
 
 ## On-screen button events (from physkb_vkey.gd).
 func vkey_event(id: String, down: bool, echo: bool) -> void:
@@ -299,110 +317,128 @@ func vkey_event(id: String, down: bool, echo: bool) -> void:
 		s.vkb_setstate(a.key, down, 0, echo)
 		return
 	var token := "vk:" + id
+	var held := _virtual_mods()
 	if down:
 		if echo:
 			_repeat(token)
 		else:
 			if PicoVideoStreamer.get_haptic_enabled():
 				Input.vibrate_handheld(35, 1)
-			_press(token, a, 0)
+			_press(token, [a], 0, held)
 	else:
-		_release(token)
+		_release(token, held)
 
 # ------------------------------------------------------------------ output
 
-func _press(token, a: Dictionary, extra_mods: int) -> void:
+func _press(token, acts: Array, extra_mods: int, held: int) -> void:
 	var s := _streamer
 	if not is_instance_valid(s):
 		return
-	if a.kind == "host":
-		_swallowed[token] = true
-		_host(a.id)
-		return
+	var states: Array = []
+	for a in acts:
+		if a.kind == "host":
+			_host(a.id)
+			continue
+		# One-shot actions (Esc, shortcuts) ignore bouncing or auto-repeating keys.
+		var once: bool = a.has("native") or a.get("key", "") == "Escape"
+		var now := Time.get_ticks_msec()
+		if once and now - int(_last_fired.get(a.id, -ONCE_GUARD_MS)) < ONCE_GUARD_MS:
+			continue
+		_last_fired[a.id] = now
 
-	var sc := -1
-	var mods := 0
-	var flags := 0
-	var text := 0
-	if a.kind == "char":
-		var info: Array = A.CHAR_KEYS.get(a.ch, [])
-		if info.is_empty():
-			return
-		sc = int(s.SDL_KEYMAP.get(info[0], -1))
-		flags = SDL_SHIFT if info[1] else 0
-		text = a.ch.unicode_at(0)
-	else:
-		sc = int(s.SDL_KEYMAP.get(a.key, -1))
-		mods = int(a.mods) | extra_mods
-		flags = _sdl_mods(mods)
-	if sc < 0:
-		return
-
-	# Make PICO-8 see exactly the output's modifiers: lift the ones the user is
-	# holding for the combination, press the ones the output needs.
-	var held := _held_mods()
-	var lifted := 0
-	for pair in [[A.M_CTRL, SC_LCTRL], [A.M_SHIFT, SC_LSHIFT]]:
-		var bit: int = pair[0]
-		if (held & bit) and not (mods & bit):
-			s.send_key(pair[1], false, false, flags)
-			lifted |= bit
-		elif (mods & bit) and not (held & bit):
-			s.send_key(pair[1], true, false, flags)
-	if mods & A.M_ALT:
-		s.send_key(SC_LALT, true, false, flags)
-
-	s.send_key(sc, true, false, flags)
-	if text:
-		s.send_input(text)
-	_active[token] = {"sc": sc, "mods": mods, "flags": flags, "text": text, "lifted": lifted}
-
-	if assist:
+		var sc := -1
+		var mods := 0
+		var flags := 0
+		var text := 0
 		if a.kind == "char":
-			assist.note_char(a.ch)
-		elif a.get("key", "") == "Backspace" and mods == 0:
-			assist.note_backspace()
+			var info: Array = A.CHAR_KEYS.get(a.ch, [])
+			if info.is_empty():
+				continue
+			sc = int(s.SDL_KEYMAP.get(info[0], -1))
+			flags = SDL_SHIFT if info[1] else 0
+			text = a.ch.unicode_at(0)
 		else:
-			assist.note_break()
+			sc = int(s.SDL_KEYMAP.get(a.key, -1))
+			mods = int(a.mods) | extra_mods
+			flags = _sdl_mods(mods)
+		if sc < 0:
+			continue
+
+		# Make PICO-8 see exactly the output's modifiers: lift the ones the user
+		# is holding for the combination, press the ones the output needs.
+		var down := (held & ~_lifted) | _forced # what PICO-8 currently has down
+		for pair in [[A.M_CTRL, SC_LCTRL], [A.M_SHIFT, SC_LSHIFT]]:
+			var bit: int = pair[0]
+			if (down & bit) and not (mods & bit):
+				s.send_key(pair[1], false, false, flags)
+				if held & bit: _lifted |= bit
+				_forced &= ~bit
+			elif (mods & bit) and not (down & bit):
+				s.send_key(pair[1], true, false, flags)
+				if held & bit: _lifted &= ~bit
+				else: _forced |= bit
+		if mods & A.M_ALT:
+			s.send_key(SC_LALT, true, false, flags)
+
+		s.send_key(sc, true, false, flags)
+		if text:
+			s.send_input(text)
+		states.append({"sc": sc, "mods": mods, "flags": flags, "text": text, "once": once})
+
+		if assist:
+			if a.kind == "char":
+				assist.note_char(a.ch)
+			elif a.get("key", "") == "Backspace" and mods == 0:
+				assist.note_backspace()
+			else:
+				assist.note_break()
+	if states.is_empty():
+		_swallowed[token] = true
+	else:
+		_active[token] = states
 
 func _repeat(token) -> void:
 	var s := _streamer
 	if not is_instance_valid(s) or not _active.has(token):
 		return
-	var st: Dictionary = _active[token]
-	if st.mods & (A.M_CTRL | A.M_ALT):
-		return # chords fire once
-	s.send_key(st.sc, true, true, st.flags)
-	if st.text:
-		s.send_input(st.text)
-		if assist:
-			assist.note_char(String.chr(st.text))
+	for st in _active[token]:
+		if st.once or (st.mods & (A.M_CTRL | A.M_ALT)):
+			continue
+		s.send_key(st.sc, true, true, st.flags)
+		if st.text:
+			s.send_input(st.text)
+			if assist:
+				assist.note_char(String.chr(st.text))
 
-func _release(token) -> void:
-	if _swallowed.erase(token):
-		return
+func _release(token, held: int) -> void:
+	_swallowed.erase(token)
 	if not _active.has(token):
 		return
-	var st: Dictionary = _active[token]
+	var states: Array = _active[token]
 	_active.erase(token)
 	var s := _streamer
 	if not is_instance_valid(s):
 		return
-	var held := _held_mods()
-	var after := _sdl_mods(held)
-	var follow: Array = [] # [scancode, down]
-	if st.mods & A.M_ALT:
-		follow.append([SC_LALT, false])
+	var real := held & ~_lifted
+	var forced := _forced
+	_forced = 0
+	# Modifiers we pressed for the output go up again right away. Modifiers we
+	# lifted are only put back when the user next types with them still held
+	# (see _sync_mods), so nothing is ever pressed on a guess.
+	var tail: Array = []
+	for st in states:
+		if st.mods & A.M_ALT:
+			tail.append(SC_LALT)
 	for pair in [[A.M_CTRL, SC_LCTRL], [A.M_SHIFT, SC_LSHIFT]]:
-		var bit: int = pair[0]
-		if (st.mods & bit) and not (held & bit):
-			follow.append([pair[1], false])
-		elif (st.lifted & bit) and (held & bit):
-			follow.append([pair[1], true]) # user still holds it: put it back
-	# The last packet must carry the modifier state PICO-8 is left in.
-	s.send_key(st.sc, false, false, st.flags if not follow.is_empty() else after)
-	for f in follow:
-		s.send_key(f[0], f[1], false, after)
+		if forced & pair[0]:
+			tail.append(pair[1])
+	# The last packet must leave PICO-8 with the modifier flags that are true.
+	var after := _sdl_mods(real & ~A.M_ALT)
+	for i in states.size():
+		var last: bool = tail.is_empty() and i == states.size() - 1
+		s.send_key(states[i].sc, false, false, after if last else states[i].flags)
+	for sc in tail:
+		s.send_key(sc, false, false, after)
 
 ## Types plain text into PICO-8 (used to complete a suggestion).
 func type_text(text: String) -> void:
@@ -410,10 +446,14 @@ func type_text(text: String) -> void:
 	if not is_instance_valid(s):
 		return
 	# The accept combination may still be held; PICO-8 must not read the
-	# letters as Ctrl/Shift shortcuts.
-	var held := _held_mods()
-	if held & A.M_CTRL: s.send_key(SC_LCTRL, false, false, 0)
-	if held & A.M_SHIFT: s.send_key(SC_LSHIFT, false, false, 0)
+	# letters as Ctrl/Shift shortcuts. _sync_mods puts them back if needed.
+	var held := _virtual_mods()
+	if Input.is_key_pressed(KEY_CTRL): held |= A.M_CTRL
+	if Input.is_key_pressed(KEY_SHIFT): held |= A.M_SHIFT
+	for pair in [[A.M_CTRL, SC_LCTRL], [A.M_SHIFT, SC_LSHIFT]]:
+		if (held & pair[0]) and not (_lifted & pair[0]):
+			s.send_key(pair[1], false, false, 0)
+			_lifted |= pair[0]
 	for i in text.length():
 		var ch := text[i]
 		var code := ch.unicode_at(0)
@@ -429,8 +469,6 @@ func type_text(text: String) -> void:
 			s.send_input(code)
 		if sc >= 0:
 			s.send_key(sc, false, false, 0)
-	if held & A.M_CTRL: s.send_key(SC_LCTRL, true, false, _sdl_mods(held))
-	if held & A.M_SHIFT: s.send_key(SC_LSHIFT, true, false, _sdl_mods(held))
 
 func _host(id: String) -> void:
 	var s := _streamer
@@ -451,7 +489,8 @@ func _attach(s: Node) -> void:
 	_streamer = s
 	_active.clear()
 	_swallowed.clear()
-	_phys_mods = 0
+	_lifted = 0
+	_forced = 0
 
 	var input_node := InputNode.new()
 	input_node.name = "PhysKbInput"
