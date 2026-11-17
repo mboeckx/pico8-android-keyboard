@@ -1,0 +1,146 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.6.3"
+  # Where the bootstrap package (package.dat) is taken from when it is not in
+  # the checkout: the APK of the matching release of this repository.
+  BOOTSTRAP_REPO: ${{ vars.BOOTSTRAP_REPO || 'Macs75/pico8-android' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache Godot downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/godot-dl
+          key: godot-${{ env.GODOT_VERSION }}-android
+
+      - name: Install Godot and the Android export template
+        run: |
+          set -euo pipefail
+          mkdir -p ~/godot-dl ~/godot
+          cd ~/godot-dl
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          if [ ! -f godot.zip ]; then
+            curl -fsSL --retry 3 -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          fi
+          if [ ! -f android_source.zip ]; then
+            curl -fsSL --retry 3 -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+            unzip -q -j templates.tpz templates/android_source.zip templates/version.txt
+            rm templates.tpz
+          fi
+          unzip -q -o godot.zip -d ~/godot
+          templates="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$templates"
+          cp android_source.zip version.txt "$templates/"
+          echo "GODOT=$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+
+      - name: Fetch the bootstrap package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ ! -f frontend/package.dat ]; then
+            version=$(grep -oP 'config/version="\K[^"]+' frontend/project.godot)
+            mkdir -p "$RUNNER_TEMP/upstream"
+            gh release download "v$version" --repo "$BOOTSTRAP_REPO" --pattern '*.apk' --dir "$RUNNER_TEMP/upstream" \
+              || gh release download --repo "$BOOTSTRAP_REPO" --pattern '*.apk' --dir "$RUNNER_TEMP/upstream"
+            apk=$(ls "$RUNNER_TEMP"/upstream/*.apk | head -n1)
+            entry=$(unzip -Z1 "$apk" | grep -m1 'package\.dat$')
+            unzip -q -j -o "$apk" "$entry" -d frontend
+          fi
+          want=$(grep -oP 'BOOTSTRAP_PACKAGE_VERSION = "\K[^"]+' frontend/boot.gd)
+          got=$(tar xzOf frontend/package.dat package/package_version | tr -d '[:space:]')
+          echo "package.dat version $got (boot.gd expects $want)"
+          if [ "$want" != "$got" ]; then
+            echo "::error::package.dat is version $got but boot.gd expects $want"
+            exit 1
+          fi
+
+      - name: Install the Android build template
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          mkdir -p android/build
+          unzip -q -o ~/godot-dl/android_source.zip -d android/build
+          touch android/build/.gdignore
+          echo "${GODOT_VERSION}.stable" > android/.build_version
+
+      - name: Configure signing and editor settings
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keystore="$RUNNER_TEMP/signing.keystore"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$keystore"
+            user="$KEYSTORE_USER"
+            pass="$KEYSTORE_PASSWORD"
+            echo "::add-mask::$pass"
+            echo "Signing with the keystore from repository secrets."
+          else
+            cp .github/ci/ci-signing.keystore "$keystore"
+            user=pico8ci
+            pass=android
+            echo "Signing with the public CI key (.github/ci)."
+          fi
+          {
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$keystore"
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=$user"
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=$pass"
+          } >> "$GITHUB_ENV"
+
+          minor="${GODOT_VERSION%.*}"
+          mkdir -p ~/.config/godot
+          cat > ~/.config/godot/editor_settings-${minor}.tres <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$GITHUB_WORKSPACE/.github/ci/ci-signing.keystore"
+          export/android/debug_keystore_user = "pico8ci"
+          export/android/debug_keystore_pass = "android"
+          EOF
+
+      - name: Export the APK
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          # First run imports the assets; it can exit non-zero on a fresh project.
+          "$GODOT" --headless --path frontend --import || true
+          "$GODOT" --headless --path frontend --export-release "Android" "$PWD/build/pico8-android.apk"
+          test -s build/pico8-android.apk
+          ls -la build
+
+      - name: Check the APK
+        run: |
+          set -euo pipefail
+          aapt=$(ls "$ANDROID_HOME"/build-tools/*/aapt | sort -V | tail -n1)
+          "$aapt" dump badging build/pico8-android.apk | grep -E "^(package|sdkVersion|targetSdkVersion|native-code)"
+          # Target SDK 28 is required for running the imported PICO-8 binary.
+          "$aapt" dump badging build/pico8-android.apk | grep -q "targetSdkVersion:'28'"
+          unzip -l build/pico8-android.apk | grep -q 'package\.dat'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pico8-android-apk
+          path: build/pico8-android.apk
+          if-no-files-found: error
