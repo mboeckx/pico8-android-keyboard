@@ -20,6 +20,7 @@ var _margin: MarginContainer
 var _title: Label
 var _btn_close: Button
 var _btn_reset: Button
+var _btn_sheet: Button
 var _rows: Dictionary = {} # action id -> {bind, clear, vkey, warn, def}
 var _collapsed: Dictionary = {A.G_CHARS: true, A.G_SHORTCUTS: true, A.G_APP: true}
 var _capturing: String = ""
@@ -107,6 +108,16 @@ func _build_frame() -> void:
 	_btn_close.pressed.connect(_close)
 	footer.add_child(_btn_close)
 
+	var gap0 := Control.new()
+	gap0.custom_minimum_size = Vector2(20, 0)
+	footer.add_child(gap0)
+
+	_btn_sheet = Button.new()
+	_btn_sheet.text = "📖 Cheat Sheet"
+	_btn_sheet.add_theme_stylebox_override("normal", _flat_box(Color(0.15, 0.15, 0.15), Color(0.45, 0.45, 0.45)))
+	_btn_sheet.pressed.connect(PhysKb.open_cheat_sheet)
+	footer.add_child(_btn_sheet)
+
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(20, 0)
 	footer.add_child(gap)
@@ -135,6 +146,7 @@ func _rebuild() -> void:
 	_title.add_theme_font_size_override("font_size", int(_font * 1.1))
 	_btn_close.add_theme_font_size_override("font_size", _font)
 	_btn_reset.add_theme_font_size_override("font_size", _font)
+	_btn_sheet.add_theme_font_size_override("font_size", _font)
 
 	var keep_scroll := _scroll.scroll_vertical
 	_capturing = ""
@@ -149,6 +161,9 @@ func _rebuild() -> void:
 	_add_toggle("Hold word for docs", "hold_docs", "Touch and hold a PICO-8 keyword in the code editor")
 	_add_toggle("Suggest names", "suggestions", "Show matching PICO-8 names while typing")
 	_add_toggle("Usage hints", "usage_hints", "Show how to call the function being typed")
+	_add_select("On-screen keys", "vkey_layout", ["Free", "Grid"],
+		"Free: place every button yourself. Grid: equal tiles in rows across the screen")
+	_add_toggle("Snap to grid", "vkey_snap", "Free layout: buttons settle on a grid when you drop them")
 	_add_hint("Tap a key box, then press the keys. ✖ clears it. 📱 adds an on-screen button; place it with Customize Layout.")
 
 	for g in A.GROUPS:

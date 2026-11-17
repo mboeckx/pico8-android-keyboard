@@ -15,12 +15,15 @@ const InputNode = preload("res://physkb/physkb_input.gd")
 const VKey = preload("res://physkb/physkb_vkey.gd")
 const Assist = preload("res://physkb/physkb_code_assist.gd")
 const Editor = preload("res://physkb/physkb_editor.gd")
+const Bar = preload("res://physkb/physkb_bar.gd")
+const CheatSheet = preload("res://physkb/physkb_cheatsheet.gd")
 const KEY_SCENE = preload("res://key.tscn")
 const TEX_KEY = preload("res://assets/key.png")
 const TEX_KEY_PRESSED = preload("res://assets/key_pressed.png")
 
 const SECTION := "physkb"
 const ONCE_GUARD_MS := 300 # one-shot actions fire at most once per this interval
+const SNAP_UNITS := 3.0 # snap-to-grid step for freely placed buttons
 const VKEY_SCALE := 1.5 # on-screen keys start a bit larger than keyboard keys
 const VKEY_ROW_UNITS := 80.0 # default row width before wrapping
 
@@ -39,6 +42,7 @@ const NAV_CONSOLE := 0x10
 const NAV_SCREEN_MASK := 0x1B
 
 enum GameKeys {AUTO, ALWAYS, OFF}
+enum VKeyLayout {FREE, GRID}
 
 signal changed
 
@@ -47,6 +51,8 @@ var game_keys_mode: int = GameKeys.AUTO
 var hold_docs: bool = true
 var suggestions: bool = true
 var usage_hints: bool = true
+var vkey_layout: int = VKeyLayout.FREE
+var vkey_snap: bool = false
 var bindings: Dictionary = {} # action id -> combo (0 = cleared); absent = default
 var vkeys: Array = [] # action ids shown as on-screen buttons
 
@@ -91,6 +97,8 @@ func _process(_delta: float) -> void:
 	# its buttons are hidden here when the landscape set is showing.
 	if is_instance_valid(_portrait_holder):
 		_portrait_holder.visible = not PicoVideoStreamer.is_system_landscape()
+	if PicoVideoStreamer.display_drag_enabled:
+		_dodge_layout_controls(s)
 
 # ---------------------------------------------------------------- settings
 
@@ -100,6 +108,8 @@ func _load() -> void:
 	hold_docs = PicoBootManager.get_setting(SECTION, "hold_docs", true)
 	suggestions = PicoBootManager.get_setting(SECTION, "suggestions", true)
 	usage_hints = PicoBootManager.get_setting(SECTION, "usage_hints", true)
+	vkey_layout = PicoBootManager.get_setting(SECTION, "vkey_layout", VKeyLayout.FREE)
+	vkey_snap = PicoBootManager.get_setting(SECTION, "vkey_snap", false)
 	var b = PicoBootManager.get_setting(SECTION, "bindings", {})
 	bindings = b if b is Dictionary else {}
 	var v = PicoBootManager.get_setting(SECTION, "vkeys", [])
@@ -110,6 +120,8 @@ func set_option(key: String, value) -> void:
 	PicoBootManager.set_setting(SECTION, key, value)
 	if key == "game_keys_mode":
 		_game_override = null
+	if key == "vkey_layout":
+		_build_vkeys()
 	changed.emit()
 
 func get_binding(id: String) -> int:
@@ -482,6 +494,8 @@ func _host(id: String) -> void:
 				assist.accept_suggestion(0)
 		"options_menu":
 			s._toggle_options_menu()
+		"cheat_sheet":
+			open_cheat_sheet()
 
 # ------------------------------------------------------------------- nodes
 
@@ -521,12 +535,21 @@ func _build_vkeys() -> void:
 		for child in holder.get_children():
 			holder.remove_child(child)
 			child.queue_free()
-		# Default slots: rows growing up from the bottom-left corner.
-		var slot := Vector2.ZERO
+		var keys: Array = []
 		for id in vkeys:
-			if not _by_id.has(id):
-				continue
-			var key = _make_vkey(_by_id[id])
+			if _by_id.has(id):
+				keys.append(_make_vkey(_by_id[id]))
+		if keys.is_empty():
+			continue
+		if vkey_layout == VKeyLayout.GRID:
+			var bar := Bar.new()
+			bar.setup(keys)
+			holder.add_child(bar)
+			continue
+		# Free layout. Default slots: rows growing up from the bottom-right
+		# corner (the layout zoom/reset controls live bottom-left).
+		var slot := Vector2.ZERO
+		for key in keys:
 			if slot.x > 0 and slot.x + key.size.x > VKEY_ROW_UNITS:
 				slot = Vector2(0, slot.y + 1)
 			key.slot = slot
@@ -534,28 +557,60 @@ func _build_vkeys() -> void:
 			holder.add_child(key)
 
 func _make_vkey(a: Dictionary) -> Control:
-	var key: Control = KEY_SCENE.instantiate()
-	key.set_script(VKey)
+	var key: Control = make_tile(a.cap, a.font)
 	key.name = "pk_" + a.id
 	key.action_id = a.id
+	key.can_lock = a.get("modifier", false)
+	return key
+
+## A key.tscn instance running physkb_vkey.gd, styled like the keyboard keys.
+func make_tile(cap: String, font: int = A.F_SYMBOL) -> Control:
+	var key: Control = KEY_SCENE.instantiate()
+	key.set_script(VKey)
 	key.texture_normal = TEX_KEY
 	key.texture_pressed = TEX_KEY_PRESSED
-	key.cap_text = a.cap
+	key.cap_text = cap
 	key.cap_type_shift = 2 # KeycapType.NONE: same cap with Shift
-	key.font_type = a.font
+	key.font_type = font
 	key.unicode = false
-	key.can_lock = a.get("modifier", false)
-	if a.font != A.F_NORMAL:
+	if font != A.F_NORMAL:
 		key.font_color = Color(0.5176471, 0.47058824, 0.63529414, 1)
 	var w := 12.0
-	if a.font == A.F_SMALL:
-		w = 22.0 if a.cap.length() > 3 else (16.0 if a.cap.length() > 2 else 12.0)
+	if font == A.F_SMALL:
+		w = 22.0 if cap.length() > 3 else (16.0 if cap.length() > 2 else 12.0)
 	# Placed and resized with Options > Customize Layout, exactly like the
 	# built-in buttons; physkb_vkey.gd parks them in a default slot until then.
 	key.size = Vector2(w, 11)
 	key.scale = Vector2(VKEY_SCALE, VKEY_SCALE)
 	key.z_index = 150
 	return key
+
+## Moves an on-screen button to another place in the order (grid layout).
+func move_vkey(id: String, index: int) -> void:
+	if not vkeys.has(id) or index < 0:
+		return
+	vkeys.erase(id)
+	vkeys.insert(min(index, vkeys.size()), id)
+	PicoBootManager.set_setting(SECTION, "vkeys", vkeys)
+	_build_vkeys.call_deferred()
+
+## Customize Layout: keep the zoom / reset controls off the selected item.
+func _dodge_layout_controls(s: Node) -> void:
+	var lc: Control = s.get_node_or_null("OverlayUI/LayoutControls")
+	if lc == null or not lc.visible:
+		return
+	var sel = s.selected_control
+	var h: float = lc.size.y * lc.scale.y
+	var w: float = lc.size.x * lc.scale.x
+	var vp: Vector2 = lc.get_viewport_rect().size
+	# Home is the bottom-left corner; the box is scaled around its own
+	# bottom-left (see arranger.gd), so its unscaled bottom edge is the anchor.
+	var bottom: float = vp.y - 20.0
+	if is_instance_valid(sel) and sel is Control:
+		var home := Rect2(0, bottom - h, w, h).grow(20)
+		if home.intersects(sel.get_global_rect()):
+			bottom = 20.0 + h # move to the top-left corner instead
+	lc.position.y = bottom - lc.size.y
 
 func open_editor() -> void:
 	var root := get_tree().root
@@ -564,3 +619,12 @@ func open_editor() -> void:
 	var ed := Editor.new()
 	ed.name = "PhysKbEditor"
 	root.add_child(ed)
+
+func open_cheat_sheet() -> void:
+	var root := get_tree().root
+	if root.has_node("PhysKbCheatSheet"):
+		root.get_node("PhysKbCheatSheet").queue_free()
+		return
+	var sheet := CheatSheet.new()
+	sheet.name = "PhysKbCheatSheet"
+	root.add_child(sheet)

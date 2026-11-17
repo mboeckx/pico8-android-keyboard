@@ -63,7 +63,9 @@ Open **Options > Controls > Keyboard Mapping**.
 *   **PICO-8 shortcuts** – move PICO-8's fixed shortcuts (screenshot `F6`, cart label `F7`, …) to combinations you can reach, or clear one to disable it. A cleared or moved shortcut no longer reacts to its original combination.
 *   Tap a key box and press the combination to bind it, **✖** clears it, **↺** restores the default. A combination used by more than one action turns orange and lists the other actions. It still works: pressing it triggers all of them.
 *   **📱** puts any action on screen as a button. Move and resize the buttons with **Options > Display > Customize Layout**, like the built-in controls.
-*   **Code editor helpers** (each can be switched off): touch and hold a PICO-8 keyword for a short description, name suggestions while typing (tap one or press `Ctrl+Space`), and a usage hint for the function being typed.
+*   **On-screen keys: Free / Grid** – *Free* lets you place every button yourself (**Snap to grid** makes them settle on a grid when dropped). *Grid* lines them up as equal tiles in rows across the screen: in Customize Layout, zoom the bar to change the tile size (and how many fit per row), drag the **↕** tile to move the bar, drag a tile to reorder.
+*   **Code editor helpers** (each can be switched off): touch and hold a PICO-8 keyword for a short description (📌 keeps it on screen), name suggestions while typing (tap one or press `Ctrl+Space`), and a usage hint for the function being typed.
+*   **Cheat sheet** – a built-in PICO-8 reference (colours, API by topic, operators, memory map, console commands, your shortcuts). Open it from the Keyboard Mapping screen, or give the **Cheat sheet** action a key or an on-screen button.
 
 Everything lives in `frontend/physkb/`; see the README there for how it hooks into the app.
 

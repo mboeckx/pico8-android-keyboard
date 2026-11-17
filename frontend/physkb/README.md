@@ -10,6 +10,8 @@ autoload line in `project.godot` and the *Keyboard Mapping* button in
 | `physkb_actions.gd` | The list of actions (game keys, keys, characters, PICO-8 shortcuts, app actions) and their defaults. |
 | `physkb_input.gd` | Node added under `Main` at runtime; sees key events before `PicoVideoStreamer` and consumes the translated ones. |
 | `physkb_vkey.gd` | On-screen button for an action; extends `key.gd`, so layout customisation works unchanged. |
+| `physkb_bar.gd` | "Grid" layout: the on-screen buttons as equal tiles in rows across the screen. |
+| `physkb_cheatsheet.gd` | The built-in PICO-8 cheat sheet screen. |
 | `physkb_editor.gd` | The *Keyboard Mapping* screen. |
 | `physkb_code_assist.gd` | Hold-for-docs, suggestions and usage hints over the code editor. |
 | `physkb_api_docs.gd` | The PICO-8 reference texts. |
@@ -43,5 +45,9 @@ Settings are stored in the `[physkb]` section of `user://settings.cfg`.
 *   The current screen (Splore / game / editor) comes from the shim's NavState,
     which is only available with PICO-8 0.2.7. Without it "Auto" game keys stay
     off and the code helpers are always available.
-*   Suggestions follow the keys typed on a physical or Android keyboard; the
-    built-in on-screen keyboard is not tracked.
+*   Suggestions follow the keys typed on a physical or Android keyboard; when
+    that trail is lost (cursor moved, deleting older text) the word before the
+    cursor is read from the screen instead. The built-in on-screen keyboard is
+    not tracked.
+*   In Customize Layout the zoom/reset box moves to the top-left while the
+    selected item is underneath its usual corner (`_dodge_layout_controls`).

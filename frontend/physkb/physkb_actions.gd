@@ -180,4 +180,5 @@ static func build() -> Array:
 	list.append(_host("toggle_game_keys", "Game keys on/off", combo(C | S, KEY_G), "gkey"))
 	list.append(_host("accept_suggestion", "Accept suggestion", combo(C, KEY_SPACE), "ok"))
 	list.append(_host("options_menu", "Options menu", 0, "opt"))
+	list.append(_host("cheat_sheet", "Cheat sheet", 0, "help"))
 	return list
