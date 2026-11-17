@@ -65,7 +65,7 @@ Open **Options > Controls > Keyboard Mapping**.
 *   **📱** puts any action on screen as a button. Move and resize the buttons with **Options > Display > Customize Layout**, like the built-in controls.
 *   **On-screen keys: Free / Grid** – *Free* lets you place every button yourself (**Snap to grid** makes them settle on a grid when dropped). *Grid* lines them up as equal tiles in rows across the screen: in Customize Layout, zoom the bar to change the tile size (and how many fit per row), drag the **↕** tile to move the bar, drag a tile to reorder.
 *   **Code editor helpers** (each can be switched off): touch and hold a PICO-8 keyword for a short description (📌 keeps it on screen), name suggestions while typing (tap one or press `Ctrl+Space`), and a usage hint for the function being typed.
-*   **Cheat sheet** – a built-in PICO-8 reference (colours, API by topic, operators, memory map, console commands, your shortcuts). Open it from the Keyboard Mapping screen, or give the **Cheat sheet** action a key or an on-screen button.
+*   **Cheat sheet** – a built-in text version of the community PICO-8 Cheat Sheet, section for section, plus colour swatches and your own key bindings. Open it from the Keyboard Mapping screen, or give the **Cheat sheet** action a key or an on-screen button.
 
 Everything lives in `frontend/physkb/`; see the README there for how it hooks into the app.
 

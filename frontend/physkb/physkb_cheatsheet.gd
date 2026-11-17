@@ -1,7 +1,7 @@
 extends CanvasLayer
-## Built-in PICO-8 cheat sheet: the API at a glance, grouped the way the
-## well-known community cheat sheets are (text only; nothing is copied from
-## them). Tap an entry for its description. Function entries come from
+## Built-in PICO-8 cheat sheet. A text version that follows the sections of
+## the community "PICO-8 Cheat Sheet" poster, kept up to date with the current
+## API. Tap an entry for its description. Function entries come from
 ## physkb_api_docs.gd, so the two never disagree.
 
 const Docs = preload("res://physkb/physkb_api_docs.gd")
@@ -20,55 +20,132 @@ const PALETTE := [
 	["blue", "29adff"], ["lavender", "83769c"], ["pink", "ff77a8"], ["light-peach", "ffccaa"],
 ]
 
-## [title, entries]. An entry is a name from Docs.DOCS, or [text, description].
+## [title, entries], in the order of the community "PICO-8 Cheat Sheet".
+## An entry is a name from Docs.DOCS, or [text, description].
 const SECTIONS := [
-	["PROGRAM", ["_init", "_update", "_update60", "_draw"]],
-	["GRAPHICS", ["cls", "pset", "pget", "line", "rect", "rectfill", "rrect", "rrectfill", "circ", "circfill",
-		"oval", "ovalfill", "spr", "sspr", "sget", "sset", "fget", "fset", "print", "cursor", "color",
-		"pal", "palt", "fillp", "camera", "clip", "tline", "flip"]],
-	["MAP", ["map", "mget", "mset", "fget"]],
-	["INPUT", ["btn", "btnp",
-		["0 left  1 right  2 up  3 down  4 O  5 X", "Button numbers. Player is 0 (default) to 7."],
-		["stat(34) buttons  stat(32),stat(33) x,y", "Mouse, after poke(0x5f2d, 1)."],
-		["stat(30) key pressed?  stat(31) which", "Keyboard, after poke(0x5f2d, 1)."]]],
-	["SOUND", ["sfx", "music"]],
-	["TABLES", ["add", "del", "deli", "count", "all", "foreach", "pairs", "ipairs", "pack", "unpack", "select",
-		["t = {1, 2, x=3}   #t   t[1]   t.x", "Tables start at index 1. #t is the length of the sequence."],
-		"setmetatable", "getmetatable", "rawget", "rawset"]],
-	["MATH", ["max", "min", "mid", "flr", "ceil", "abs", "sgn", "sqrt", "sin", "cos", "atan2", "rnd", "srand",
-		["numbers: -32768 .. 32767.9999", "16:16 fixed point. Overflow wraps around."]]],
-	["STRINGS", ["sub", "tostr", "tonum", "chr", "ord", "split", "type",
-		["\"a\"..\"b\"   #s   s[i]", "Join strings with .. ; #s is the length; s[i] is one character."]]],
+	["COMMANDLINE", [
+		["help", "List the console commands."],
+		["save <file_name>.p8", "Save the cart. Use .p8.png for a picture cart."],
+		["load <file_name>.p8", "Load a cart. In code: load(\"name\")."],
+		["run", "Run the loaded cart."],
+		["splore", "Open the cart browser."],
+		["folder", "Open the carts folder on the host."],
+		["ls() / dir", "List the files in the current folder."],
+		["cd <dir_name>   mkdir <dir_name>", "Change folder; create a folder."],
+		["import x.png   export x.bin / x.html", "Import a sprite sheet; export the cart as a binary or web page."],
+		["cls   info", "Clear the console; show cart statistics (tokens, size)."],
+		["shutdown   reboot", "Quit PICO-8; restart it."]]],
+	["VARS AND TYPES", [
+		["a=nil", "nil is 'no value'. Unassigned variables are nil."],
+		["x=23", "Numbers are 16:16 fixed point: -32768 to 32767.9999."],
+		["local x=\"text\"", "local limits the variable to the current block."],
+		["t={name=\"joe\",age=\"32\"}", "A table with named fields: t.name, t.age."]]],
 	["OPERATORS", [
-		["+  -  *  /  \\  %  ^", "\\ is integer division, % the remainder, ^ power."],
-		["<  >  <=  >=  ==  !=  ~=", "Comparisons. != and ~= both mean not equal."],
+		["+ - * / ^ % =", "Arithmetic and assignment. \\ is integer division."],
+		["+= -= *= /= %= ^=", "Update a variable in place."],
+		["< > <= >= ~= == !=", "Comparisons. ~= and != both mean not equal."],
+		["#list   \"a\"..\"b\"", "Length of a table or string; join strings."],
 		["and  or  not", "Logic. Only false and nil count as false."],
-		["&  |  ^^  ~  <<  >>  >>>  <<>  >><", "Bitwise and, or, xor, not, shifts and rotates."],
-		["+=  -=  *=  /=  \\=  %=  ^=  ..=", "Update a variable in place."],
-		["@addr  %addr  $addr", "peek, peek2 and peek4 shorthands."],
-		["?\"text\"", "Shorthand for print."],
-		["-- comment   --[[ block ]]", "Comments."]]],
-	["FLOW", ["if", "for", "while", "repeat", "function", "local", "return", "break", "goto",
-		["if (cond) statement", "One-line if without then/end. Also works for while."],
-		["for i=10,1,-1 do ... end", "Counting down needs a negative step."]]],
-	["MEMORY", ["peek", "poke", "peek2", "poke2", "peek4", "poke4", "memcpy", "memset", "reload", "cstore",
-		["0x0000 sprites   0x1000 shared", "Sprite sheet; its lower half is shared with the map."],
-		["0x2000 map       0x3000 flags", "Map (upper half) and sprite flags."],
-		["0x3100 music     0x3200 sfx", "Music patterns and sound effects."],
-		["0x4300 user      0x5600 font", "General use, and the custom font."],
-		["0x5e00 cartdata  0x5f00 draw state", "Persistent data, and draw state (camera, palette, ...)."],
-		["0x5f40 hardware  0x5f80 gpio", "Hardware state and GPIO pins."],
-		["0x6000 screen    0x8000 user", "Screen (8k), then 32k more for general use."]]],
-	["CART DATA", ["cartdata", "dget", "dset", "menuitem", "stat", "time", "extcmd", "printh", "assert", "stop", "trace"]],
+		["&  |  ^^  ~  <<  >>  >>>  <<>  >><", "Bitwise and, or, xor, not, shifts and rotates."]]],
+	["FUNCTIONS", [
+		["function add(a,b)", "Define a function with two parameters."],
+		[" return a+b", "Hand a value back to the caller."],
+		["end", ""]]],
+	["IF STATEMENT", [
+		["if (x==33) then", "Brackets are optional when 'then' is used."],
+		[" print(\"well done\")", ""],
+		["elseif (x>33) then", "Another condition to try."],
+		[" print(\"please try again\")", ""],
+		["else break end", "else runs when nothing matched; break leaves a loop."]]],
+	["TABLES", [
+		["t={a=\"x\",b=1}   t={1,2,3,4}", "Named fields, or a list."],
+		"add", "del",
+		["count(t) or #t", "Number of items in the list."],
+		["print(t[1]) --1 based!!", "Lists start at index 1."],
+		"all", "foreach", "pairs"]],
+	["LOOPS", [
+		["for i=1,10 do --count up", "i runs from 1 to 10."],
+		[" print(i)", ""],
+		["end", ""],
+		["for a=10,0,-2 do --count down", "The third number is the step."],
+		["for s in all(ships) do --array", "Every item of a list, in order."],
+		[" print(s.name)", ""],
+		["for k,v in pairs(m) do --table", "Every key and value of a table."],
+		[" print(\"k:\"..k..\",v:\"..v)", ""],
+		["repeat ... until <condition>", "Runs the block at least once."],
+		["while <condition> do ... end", "Runs the block while the condition holds."]]],
+	["SHRINK CODE", [
+		["--limits: token 8192", "A cart may use at most 8192 tokens."],
+		["--character 65535", "And at most 65535 characters of code."],
+		["if (value) do_thing()", "One-line if: no then/end needed."],
+		["foreach(enemies,t_damage)", "One-line version of a for-in-all loop."],
+		["size=#table", "# costs fewer tokens than count()."],
+		["a=3 --short var name", "Shorter names save characters, not tokens."],
+		["a+=3 --shorter operation", "Fewer tokens than a=a+3."],
+		["--remove spaces, comments", "They count towards the character limit."],
+		["t=true f=false --constants", "Reuse constants through short variables."],
+		["function md(a,b) return a*b,a/b end", "A function can return several values."],
+		["a,b=md(8,4)", "Take more than one value."]]],
+	["SHORTCUTS", [
+		["save: ctrl+s", ""],
+		["change mode: esc", "Switch between the console and the editor."],
+		["reload and run: ctrl+r", ""],
+		["fullscreen: alt+enter", ""],
+		["screenshot: f6   cart image: f7", "The cart image is the label of a .p8.png cart."],
+		["start video: f8   save video: f9", "Saves a GIF."],
+		["pause/resume: p / enter", ""],
+		["undo: ctrl+z   redo: ctrl+y", "Text editor."],
+		["search: ctrl+f   next: ctrl+g", "Text editor."],
+		["next/prev func: alt+up/down", "Text editor."],
+		["jump to start/end: ctrl+up/down", "Text editor."],
+		["indent selection: tab", "Shift+Tab removes the indent."]]],
+	["CARTRIDGE DATA", ["cartdata", "dget", "dset"]],
+	["RAM MEMORY LAYOUT", [
+		["0x0000 gfx", "Sprite sheet, sprites 0-127."],
+		["0x1000 gfx2/map2 (shared)", "Sprites 128-255, shared with the lower half of the map."],
+		["0x2000 map", "Upper half of the map."],
+		["0x3000 gfx_props", "Sprite flags."],
+		["0x3100 song", "Music patterns."],
+		["0x3200 sfx", "Sound effects."],
+		["0x4300 userdata", "General use."],
+		["0x5e00 persistent cart data (256 bytes)", "What dget/dset read and write."],
+		["0x5f00 draw state", "Camera, clip, palette, cursor and so on."],
+		["0x5f40 hardware state", "Sound and input hardware settings."],
+		["0x5f80 gpio pins (128 bytes)", ""],
+		["0x6000 screen (8k)", "One nibble per pixel."]]],
+	["MEMORY MANIPULATION", ["cstore", "memcpy", "memset", "reload", "peek", "poke", "peek4", "poke4"]],
 	["COROUTINES", ["cocreate", "coresume", "costatus", "yield"]],
-	["CONSOLE", [
-		["load name    save name", "Load or save a cart. save name.p8.png saves a picture cart."],
-		["run    resume    reboot", "Run the cart, continue after stop, or restart PICO-8."],
-		["ls    cd dir    mkdir dir", "Browse the carts folder."],
-		["folder    splore    help", "Open the carts folder, the cart browser, or the help."],
-		["export name.html / .bin / .png / .wav", "Export the cart, sprite sheet or sounds."],
-		["import name.png / .wav", "Import a sprite sheet or sound."],
-		["info    keyconfig    install_demos", "Cart statistics, key setup, demo carts."]]],
+	["SPECIAL CALLBACKS", ["_init", "_update", "_update60", "_draw"]],
+	["SPRITES", ["spr", "sspr", "sget", "sset"]],
+	["COLORS", ["pal", "palt"]],
+	["PIXELS", ["pget", "pset"]],
+	["SPRITE FLAG", ["fget", "fset"]],
+	["SHAPES", ["rect", "rectfill", "circ", "circfill", "oval", "ovalfill", "line"]],
+	["SCREEN", ["camera", "clip", "color", "cls",
+		["x: 0..127 right   y: 0..127 down", "The screen is 128x128. (0,0) is the top-left corner."]]],
+	["MAP", ["mget", "mset", "map"]],
+	["MATH", ["band", "bnot", "bor", "bxor", "shl", "shr", "lshr", "cos", "sin", "atan2",
+		"flr", "ceil", "abs", "sgn", "max", "mid", "min", "sqrt", "rnd", "srand"]],
+	["CONTROLS", [
+		["0 left  1 right  2 up  3 down  4 O  5 X", "Button numbers for btn and btnp."],
+		["player 1: arrows, z/x, c/v, n/m", "Keyboard keys PICO-8 reads for player 1."],
+		["player 2: s f e d, lshift/a, tab/q", "Keyboard keys for player 2."],
+		["pause: p / enter", ""],
+		"btn", "btnp"]],
+	["STRING MANIPULATION", [
+		["#string --length", ""],
+		["\"ten\"..4 --concatenation", "Numbers are converted when joined."],
+		"sub",
+		["\"123.45\"+0 --cast to number", ""]]],
+	["TYPES", ["type", "tostr", "tonum"]],
+	["SOUND", ["sfx", "music"]],
+	["TRACKER", [
+		["z s x d c v g b h n j m  (octave)", "Piano layout on the keyboard, lower row."],
+		["q 2 w 3 e r 5 t 6 y 7 u  (octave+1)", "Piano layout, upper row."],
+		["note: tone octave instrument volume effect", "The five columns of a tracker note."],
+		["effects: 0 none  1 slide  2 vibrato", ""],
+		["3 drop (drum kick)  4 fade in  5 fade out", ""],
+		["6 fast arpeggio  7 slow arpeggio (4 notes)", ""]]],
 ]
 
 var _font: int = 12
@@ -196,7 +273,7 @@ func _entry(text: String, detail: String, color: Color) -> Button:
 	var none := StyleBoxEmpty.new()
 	for st in ["normal", "hover", "pressed", "focus"]:
 		b.add_theme_stylebox_override(st, none)
-	b.pressed.connect(func(): _detail.text = text + "\n" + detail)
+	b.pressed.connect(func(): _detail.text = text.strip_edges() + ("\n" + detail if not detail.is_empty() else ""))
 	return b
 
 func _card(title: String, entries: Array, width: float) -> Control:
@@ -210,7 +287,7 @@ func _card(title: String, entries: Array, width: float) -> Control:
 	return box
 
 func _palette_card(width: float) -> Control:
-	var box := _card_box("COLOURS", width)
+	var box := _card_box("COLOR NUMBERS", width)
 	var grid := GridContainer.new()
 	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", int(_font * 0.5))
@@ -234,7 +311,7 @@ func _palette_card(width: float) -> Control:
 
 ## PICO-8's shortcuts with the combinations currently assigned to them.
 func _shortcut_card(width: float) -> Control:
-	var box := _card_box("SHORTCUTS", width)
+	var box := _card_box("YOUR KEY BINDINGS", width)
 	for a in PhysKb.actions:
 		if a.group != A.G_SHORTCUTS and a.id != "esc":
 			continue
